@@ -2229,6 +2229,55 @@ function runMigrations(db: Database.Database): void {
       db.exec(`ALTER TABLE schema_version_new RENAME TO schema_version`)
       db.exec(`UPDATE app_settings SET value = '${process.env.APP_VERSION || '3.0.15'}' WHERE key = 'app_version'`);
     },
+    // Budget ledger model: transactions with independent payers and split participants.
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS budget_transactions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+          type TEXT NOT NULL CHECK(type IN ('expense', 'settlement', 'adjustment')),
+          title TEXT NOT NULL,
+          category TEXT,
+          transaction_date TEXT NOT NULL,
+          note TEXT,
+          currency TEXT NOT NULL,
+          reservation_id INTEGER REFERENCES reservations(id) ON DELETE SET NULL DEFAULT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS budget_transaction_payers (
+          transaction_id INTEGER NOT NULL REFERENCES budget_transactions(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          amount REAL NOT NULL CHECK(amount >= 0),
+          PRIMARY KEY (transaction_id, user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS budget_transaction_splits (
+          transaction_id INTEGER NOT NULL REFERENCES budget_transactions(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          amount REAL NOT NULL CHECK(amount >= 0),
+          PRIMARY KEY (transaction_id, user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS budget_category_budgets (
+          trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+          category TEXT NOT NULL,
+          currency TEXT NOT NULL,
+          amount REAL NOT NULL CHECK(amount >= 0),
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (trip_id, category, currency)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_budget_transactions_trip_id ON budget_transactions(trip_id);
+        CREATE INDEX IF NOT EXISTS idx_budget_transactions_trip_date ON budget_transactions(trip_id, transaction_date);
+        CREATE INDEX IF NOT EXISTS idx_budget_transactions_category ON budget_transactions(trip_id, category, currency);
+        CREATE INDEX IF NOT EXISTS idx_budget_transaction_payers_user ON budget_transaction_payers(user_id);
+        CREATE INDEX IF NOT EXISTS idx_budget_transaction_splits_user ON budget_transaction_splits(user_id);
+        CREATE INDEX IF NOT EXISTS idx_budget_category_budgets_trip ON budget_category_budgets(trip_id);
+      `);
+    },
   ];
 
   if (currentVersion < migrations.length) {

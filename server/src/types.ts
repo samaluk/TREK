@@ -139,6 +139,51 @@ export interface BudgetItemMember {
   budget_item_id?: number;
 }
 
+export type BudgetTransactionType = 'expense' | 'settlement' | 'adjustment';
+
+export interface BudgetTransaction {
+  id: number;
+  trip_id: number;
+  type: BudgetTransactionType;
+  title: string;
+  category?: string | null;
+  transaction_date: string;
+  note?: string | null;
+  currency: string;
+  reservation_id?: number | null;
+  created_at?: string;
+  updated_at?: string;
+  payers?: BudgetTransactionPayer[];
+  splits?: BudgetTransactionSplit[];
+}
+
+export interface BudgetTransactionPayer {
+  transaction_id: number;
+  user_id: number;
+  amount: number;
+  username?: string;
+  avatar?: string | null;
+  avatar_url?: string | null;
+}
+
+export interface BudgetTransactionSplit {
+  transaction_id: number;
+  user_id: number;
+  amount: number;
+  username?: string;
+  avatar?: string | null;
+  avatar_url?: string | null;
+}
+
+export interface BudgetCategoryBudget {
+  trip_id: number;
+  category: string;
+  currency: string;
+  amount: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface ReservationEndpoint {
   id: number;
   reservation_id: number;

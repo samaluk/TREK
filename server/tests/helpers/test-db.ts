@@ -50,6 +50,10 @@ const RESET_TABLES = [
   'packing_templates',
   'packing_items',
   // Budget
+  'budget_transaction_payers',
+  'budget_transaction_splits',
+  'budget_transactions',
+  'budget_category_budgets',
   'budget_item_members',
   'budget_items',
   // Photos & files

@@ -128,6 +128,29 @@ describe('BudgetPanel ledger workflow', () => {
     expect(screen.getByText('settlement')).toBeInTheDocument()
   })
 
+  it('shows an inline error when saving a settlement fails', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.post('/api/trips/1/budget/transactions', () =>
+        HttpResponse.json({ error: 'Budget transaction endpoint unavailable' }, { status: 404 })
+      ),
+    )
+
+    render(<BudgetPanel tripId={1} tripMembers={members} />)
+    await user.click(await screen.findByText('Add transaction'))
+    await user.selectOptions(screen.getByLabelText('Type'), 'settlement')
+    await user.clear(screen.getByLabelText('Title'))
+    await user.type(screen.getByLabelText('Title'), 'Blair paid Alex')
+    await user.clear(screen.getByLabelText('Amount'))
+    await user.type(screen.getByLabelText('Amount'), '30')
+    await user.click(screen.getAllByText('Alex')[0])
+    await user.click(screen.getAllByText('Blair')[0])
+    await user.click(screen.getByText('Save'))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Budget transaction endpoint unavailable')
+    expect(screen.getByText('Title')).toBeInTheDocument()
+  })
+
   it('edits and deletes a transaction', async () => {
     const user = userEvent.setup()
     mockLedger({ transactions: [transaction()] })

@@ -94,6 +94,7 @@ export default function BudgetPanel({ tripId, tripMembers = [] }: BudgetPanelPro
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<BudgetTransaction | null>(null)
   const [form, setForm] = useState(emptyForm(currency, defaultUserId))
+  const [formError, setFormError] = useState<string | null>(null)
   const [budgetDraft, setBudgetDraft] = useState<Record<string, string>>({})
 
   useEffect(() => { loadBudgetLedger(tripId) }, [tripId, loadBudgetLedger])
@@ -134,6 +135,7 @@ export default function BudgetPanel({ tripId, tripMembers = [] }: BudgetPanelPro
   const openCreate = () => {
     setEditing(null)
     setForm(emptyForm(currency, defaultUserId))
+    setFormError(null)
     setFormOpen(true)
   }
 
@@ -150,10 +152,12 @@ export default function BudgetPanel({ tripId, tripMembers = [] }: BudgetPanelPro
       payerIds: transaction.payers.map(p => p.user_id),
       splitIds: transaction.splits.map(s => s.user_id),
     })
+    setFormError(null)
     setFormOpen(true)
   }
 
   const submit = async () => {
+    setFormError(null)
     const amount = Number(String(form.amount).replace(',', '.')) || 0
     const payload = {
       type: form.type,
@@ -166,9 +170,13 @@ export default function BudgetPanel({ tripId, tripMembers = [] }: BudgetPanelPro
       splits: splitAmount(amount, form.splitIds),
     }
     if (!payload.title || payload.payers.length === 0 || payload.splits.length === 0) return
-    if (editing) await updateBudgetTransaction(tripId, editing.id, payload)
-    else await addBudgetTransaction(tripId, payload)
-    setFormOpen(false)
+    try {
+      if (editing) await updateBudgetTransaction(tripId, editing.id, payload)
+      else await addBudgetTransaction(tripId, payload)
+      setFormOpen(false)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Unable to save transaction')
+    }
   }
 
   const saveBudgets = async () => {
@@ -347,6 +355,11 @@ export default function BudgetPanel({ tripId, tripMembers = [] }: BudgetPanelPro
               <label style={labelStyle}>Payers<MemberCheckboxes members={members} selected={form.payerIds} onChange={ids => setForm({ ...form, payerIds: ids })} /></label>
               <label style={labelStyle}>Split participants<MemberCheckboxes members={members} selected={form.splitIds} onChange={ids => setForm({ ...form, splitIds: ids })} /></label>
               <label style={labelStyle}>Note<textarea value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} style={{ ...inputStyle, minHeight: 72 }} /></label>
+              {formError && (
+                <div role="alert" style={{ border: '1px solid #fecaca', background: '#fef2f2', color: '#991b1b', borderRadius: 8, padding: '9px 10px', fontSize: 13 }}>
+                  {formError}
+                </div>
+              )}
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: 16, borderTop: '1px solid var(--border-primary)' }}>
               <button onClick={() => setFormOpen(false)} style={buttonStyle('secondary')}>Cancel</button>

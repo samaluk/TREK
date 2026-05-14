@@ -17,6 +17,8 @@ function getTable(resource: string): Table | undefined {
     packingItems: offlineDb.packingItems,
     todoItems:    offlineDb.todoItems,
     budgetItems:  offlineDb.budgetItems,
+    budgetTransactions: offlineDb.budgetTransactions,
+    budgetCategoryBudgets: offlineDb.budgetCategoryBudgets,
     reservations: offlineDb.reservations,
     tripFiles:    offlineDb.tripFiles,
   }
@@ -94,7 +96,9 @@ export const mutationQueue = {
               // Server returns { place: {...} } or { item: {...} } — grab first value
               const values = Object.values(response.data as Record<string, unknown>)
               const entity = values[0]
-              if (entity && typeof entity === 'object' && 'id' in entity) {
+              if (Array.isArray(entity)) {
+                await table.bulkPut(entity)
+              } else if (entity && typeof entity === 'object' && 'id' in entity) {
                 // Remove temp optimistic entry if id changed (CREATE case)
                 if (mutation.tempId !== undefined && mutation.tempId !== (entity as { id: number }).id) {
                   await table.delete(mutation.tempId)

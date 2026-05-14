@@ -174,4 +174,103 @@ describe('budgetSlice', () => {
     // After failure, fresh list from server
     expect(useTripStore.getState().budgetItems[0].id).toBe(freshItem.id);
   });
+
+  it('FE-STORE-BUDGET-012: loadBudgetLedger populates transactions, category budgets, and settlement', async () => {
+    const transaction = {
+      id: 101,
+      trip_id: 1,
+      type: 'expense',
+      title: 'Dinner',
+      category: 'Food',
+      transaction_date: '2026-05-10',
+      currency: 'EUR',
+      note: null,
+      reservation_id: null,
+      payers: [{ user_id: 1, username: 'Alex', amount: 80 }],
+      splits: [{ user_id: 2, username: 'Blair', amount: 80 }],
+    };
+    const budget = { trip_id: 1, category: 'Food', currency: 'EUR', amount: 200, spent: 80, remaining: 120 };
+    server.use(
+      http.get('/api/trips/1/budget/transactions', () => HttpResponse.json({ transactions: [transaction] })),
+      http.get('/api/trips/1/budget/category-budgets', () => HttpResponse.json({ budgets: [budget] })),
+      http.get('/api/trips/1/budget/settlement', () => HttpResponse.json({ currencies: [{ currency: 'EUR', balances: [], flows: [] }] }))
+    );
+
+    await useTripStore.getState().loadBudgetLedger(1);
+
+    expect(useTripStore.getState().budgetTransactions[0].title).toBe('Dinner');
+    expect(useTripStore.getState().budgetCategoryBudgets[0].remaining).toBe(120);
+    expect(useTripStore.getState().budgetSettlement?.currencies[0].currency).toBe('EUR');
+  });
+
+  it('FE-STORE-BUDGET-013: add/update/delete ledger transactions sync store state', async () => {
+    const base = {
+      id: 102,
+      trip_id: 1,
+      type: 'expense',
+      title: 'Taxi',
+      category: 'Transport',
+      transaction_date: '2026-05-11',
+      currency: 'USD',
+      note: null,
+      reservation_id: null,
+      payers: [{ user_id: 1, amount: 50 }],
+      splits: [{ user_id: 2, amount: 50 }],
+    };
+    let ledger = [] as typeof base[];
+    server.use(
+      http.get('/api/trips/1/budget/transactions', () => HttpResponse.json({ transactions: ledger })),
+      http.get('/api/trips/1/budget/category-budgets', () => HttpResponse.json({ budgets: [] })),
+      http.get('/api/trips/1/budget/settlement', () => HttpResponse.json({ currencies: [] })),
+      http.post('/api/trips/1/budget/transactions', () => {
+        ledger = [base];
+        return HttpResponse.json({ transaction: base });
+      }),
+      http.put('/api/trips/1/budget/transactions/102', async ({ request }) => {
+        const body = await request.json() as Record<string, unknown>;
+        ledger = [{ ...base, title: String(body.title) }];
+        return HttpResponse.json({ transaction: ledger[0] });
+      }),
+      http.delete('/api/trips/1/budget/transactions/102', () => {
+        ledger = [];
+        return HttpResponse.json({ success: true });
+      })
+    );
+
+    await useTripStore.getState().addBudgetTransaction(1, {
+      type: 'expense',
+      title: 'Taxi',
+      category: 'Transport',
+      transaction_date: '2026-05-11',
+      currency: 'USD',
+      payers: [{ user_id: 1, amount: 50 }],
+      splits: [{ user_id: 2, amount: 50 }],
+    });
+    expect(useTripStore.getState().budgetTransactions[0].title).toBe('Taxi');
+
+    await useTripStore.getState().updateBudgetTransaction(1, 102, {
+      type: 'expense',
+      title: 'Train',
+      category: 'Transport',
+      transaction_date: '2026-05-11',
+      currency: 'USD',
+      payers: [{ user_id: 1, amount: 50 }],
+      splits: [{ user_id: 2, amount: 50 }],
+    });
+    expect(useTripStore.getState().budgetTransactions[0].title).toBe('Train');
+
+    await useTripStore.getState().deleteBudgetTransaction(1, 102);
+    expect(useTripStore.getState().budgetTransactions).toEqual([]);
+  });
+
+  it('FE-STORE-BUDGET-014: replaceBudgetCategoryBudgets stores server progress rows', async () => {
+    const budgets = [{ trip_id: 1, category: 'Food', currency: 'EUR', amount: 300, spent: 75, remaining: 225 }];
+    server.use(
+      http.put('/api/trips/1/budget/category-budgets', () => HttpResponse.json({ budgets }))
+    );
+
+    await useTripStore.getState().replaceBudgetCategoryBudgets(1, [{ category: 'Food', currency: 'EUR', amount: 300 }]);
+
+    expect(useTripStore.getState().budgetCategoryBudgets).toEqual(budgets);
+  });
 });

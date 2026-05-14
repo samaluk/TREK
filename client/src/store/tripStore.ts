@@ -18,7 +18,7 @@ import { createFilesSlice } from './slices/filesSlice'
 import { handleRemoteEvent } from './slices/remoteEventHandler'
 import type {
   Trip, Day, Place, Assignment, DayNote, PackingItem, TodoItem,
-  Tag, Category, BudgetItem, TripFile, Reservation,
+  Tag, Category, BudgetCategoryBudget, BudgetItem, BudgetLedgerSettlement, BudgetTransaction, TripFile, Reservation,
   AssignmentsMap, DayNotesMap, WebSocketEvent,
 } from '../types'
 import { getApiErrorMessage } from '../types'
@@ -50,6 +50,9 @@ export interface TripStoreState
   tags: Tag[]
   categories: Category[]
   budgetItems: BudgetItem[]
+  budgetTransactions: BudgetTransaction[]
+  budgetCategoryBudgets: BudgetCategoryBudget[]
+  budgetSettlement: BudgetLedgerSettlement | null
   files: TripFile[]
   reservations: Reservation[]
   selectedDayId: number | null
@@ -76,6 +79,9 @@ export const useTripStore = create<TripStoreState>((set, get) => ({
   tags: [],
   categories: [],
   budgetItems: [],
+  budgetTransactions: [],
+  budgetCategoryBudgets: [],
+  budgetSettlement: null,
   files: [],
   reservations: [],
   selectedDayId: null,

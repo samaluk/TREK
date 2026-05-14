@@ -19,6 +19,8 @@ import {
   upsertPackingItems,
   upsertTodoItems,
   upsertBudgetItems,
+  upsertBudgetTransactions,
+  upsertBudgetCategoryBudgets,
   upsertReservations,
   upsertTripFiles,
   upsertAccommodations,
@@ -30,7 +32,7 @@ import {
 } from '../db/offlineDb'
 import { prefetchTilesForTrip } from './tilePrefetcher'
 import { useSettingsStore } from '../store/settingsStore'
-import type { Trip, Day, Place, PackingItem, TodoItem, BudgetItem, Reservation, TripFile, Accommodation, TripMember } from '../types'
+import type { Trip, Day, Place, PackingItem, TodoItem, BudgetItem, BudgetCategoryBudget, BudgetTransaction, Reservation, TripFile, Accommodation, TripMember } from '../types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -41,6 +43,8 @@ interface TripBundle {
   packingItems: PackingItem[]
   todoItems: TodoItem[]
   budgetItems: BudgetItem[]
+  budgetTransactions?: BudgetTransaction[]
+  budgetCategoryBudgets?: BudgetCategoryBudget[]
   reservations: Reservation[]
   files: TripFile[]
   accommodations: Accommodation[]
@@ -81,6 +85,8 @@ async function syncTrip(tripId: number): Promise<void> {
   await upsertPackingItems(bundle.packingItems)
   await upsertTodoItems(bundle.todoItems)
   await upsertBudgetItems(bundle.budgetItems)
+  await upsertBudgetTransactions(bundle.budgetTransactions || [])
+  await upsertBudgetCategoryBudgets(bundle.budgetCategoryBudgets || [])
   await upsertReservations(bundle.reservations)
   await upsertTripFiles(bundle.files)
   await upsertAccommodations(bundle.accommodations || [])

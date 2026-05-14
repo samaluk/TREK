@@ -1,6 +1,6 @@
 import type { StoreApi } from 'zustand'
 import type { TripStoreState } from '../tripStore'
-import type { Assignment, Place, Day, DayNote, PackingItem, TodoItem, BudgetItem, BudgetMember, Reservation, Trip, TripFile, WebSocketEvent } from '../../types'
+import type { Assignment, Place, Day, DayNote, PackingItem, TodoItem, BudgetCategoryBudget, BudgetItem, BudgetMember, BudgetTransaction, Reservation, Trip, TripFile, WebSocketEvent } from '../../types'
 import { offlineDb } from '../../db/offlineDb'
 
 type SetState = StoreApi<TripStoreState>['setState']
@@ -110,6 +110,16 @@ function writeToDexie(
           }
           break
         }
+        case 'budget:transaction-created':
+        case 'budget:transaction-updated':
+          await offlineDb.budgetTransactions.put(payload.transaction as BudgetTransaction)
+          break
+        case 'budget:transaction-deleted':
+          await offlineDb.budgetTransactions.delete(payload.transactionId as number)
+          break
+        case 'budget:category-budgets-updated':
+          await offlineDb.budgetCategoryBudgets.bulkPut(payload.budgets as BudgetCategoryBudget[])
+          break
 
         // ── Reservations ─────────────────────────────────────────────────────
         case 'reservation:created':
@@ -250,7 +260,7 @@ export function handleRemoteEvent(set: SetState, get: GetState, event: WebSocket
       case 'assignment:reordered': {
         const dayKey = String(payload.dayId)
         const currentItems = state.assignments[dayKey] || []
-        const orderedIds: number[] = payload.orderedIds || []
+        const orderedIds: number[] = (payload.orderedIds as number[] | undefined) || []
         const reordered = orderedIds.map((id, idx) => {
           const item = currentItems.find(a => a.id === id)
           return item ? { ...item, order_index: idx } : null
@@ -363,7 +373,7 @@ export function handleRemoteEvent(set: SetState, get: GetState, event: WebSocket
         return {
           budgetItems: state.budgetItems.map(i =>
             i.id === payload.itemId
-              ? { ...i, members: (i.members || []).map(m => m.user_id === payload.userId ? { ...m, paid: payload.paid } : m) }
+              ? { ...i, members: (i.members || []).map(m => m.user_id === payload.userId ? { ...m, paid: Boolean(payload.paid) } : m) }
               : i
           ),
         }
@@ -374,7 +384,7 @@ export function handleRemoteEvent(set: SetState, get: GetState, event: WebSocket
           const reordered = orderedIds.map((id, idx) => {
             const item = byId.get(id)
             return item ? { ...item, sort_order: idx } : null
-          }).filter((i): i is BudgetItem => i !== null)
+          }).filter((i): i is BudgetItem & { sort_order: number } => i !== null)
           const remaining = state.budgetItems.filter(i => !orderedIds.includes(i.id))
           return { budgetItems: [...reordered, ...remaining] }
         }
@@ -398,6 +408,19 @@ export function handleRemoteEvent(set: SetState, get: GetState, event: WebSocket
         }
         return {}
       }
+      case 'budget:transaction-created':
+        if (state.budgetTransactions.some(t => t.id === (payload.transaction as BudgetTransaction).id)) return {}
+        return { budgetTransactions: [payload.transaction as BudgetTransaction, ...state.budgetTransactions] }
+      case 'budget:transaction-updated':
+        return {
+          budgetTransactions: state.budgetTransactions.map(t => t.id === (payload.transaction as BudgetTransaction).id ? payload.transaction as BudgetTransaction : t),
+        }
+      case 'budget:transaction-deleted':
+        return {
+          budgetTransactions: state.budgetTransactions.filter(t => t.id !== payload.transactionId),
+        }
+      case 'budget:category-budgets-updated':
+        return { budgetCategoryBudgets: payload.budgets as BudgetCategoryBudget[] }
 
       // Reservations
       case 'reservation:created':

@@ -2242,6 +2242,7 @@ function runMigrations(db: Database.Database): void {
           note TEXT,
           currency TEXT NOT NULL,
           reservation_id INTEGER REFERENCES reservations(id) ON DELETE SET NULL DEFAULT NULL,
+          legacy_budget_item_id INTEGER UNIQUE REFERENCES budget_items(id) ON DELETE SET NULL DEFAULT NULL,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -2277,6 +2278,62 @@ function runMigrations(db: Database.Database): void {
         CREATE INDEX IF NOT EXISTS idx_budget_transaction_splits_user ON budget_transaction_splits(user_id);
         CREATE INDEX IF NOT EXISTS idx_budget_category_budgets_trip ON budget_category_budgets(trip_id);
       `);
+
+      const items = db.prepare(`
+        SELECT bi.*, t.currency, t.user_id as owner_user_id
+        FROM budget_items bi
+        JOIN trips t ON t.id = bi.trip_id
+        WHERE NOT EXISTS (
+          SELECT 1 FROM budget_transactions bt WHERE bt.legacy_budget_item_id = bi.id
+        )
+      `).all() as Array<{
+        id: number; trip_id: number; category: string; name: string; total_price: number;
+        note: string | null; expense_date: string | null; reservation_id: number | null;
+        currency: string | null; owner_user_id: number;
+      }>;
+      const insertTransaction = db.prepare(`
+        INSERT INTO budget_transactions
+          (trip_id, type, title, category, transaction_date, note, currency, reservation_id, legacy_budget_item_id)
+        VALUES (?, 'expense', ?, ?, ?, ?, ?, ?, ?)
+      `);
+      const insertPayer = db.prepare(`
+        INSERT OR IGNORE INTO budget_transaction_payers (transaction_id, user_id, amount)
+        VALUES (?, ?, ?)
+      `);
+      const insertSplit = db.prepare(`
+        INSERT OR IGNORE INTO budget_transaction_splits (transaction_id, user_id, amount)
+        VALUES (?, ?, ?)
+      `);
+
+      for (const item of items) {
+        const result = insertTransaction.run(
+          item.trip_id,
+          item.name,
+          item.category || 'Other',
+          item.expense_date || new Date().toISOString().slice(0, 10),
+          item.note || null,
+          item.currency || 'EUR',
+          item.reservation_id || null,
+          item.id,
+        );
+        const transactionId = Number(result.lastInsertRowid);
+        const members = db.prepare(`
+          SELECT user_id, paid FROM budget_item_members WHERE budget_item_id = ?
+        `).all(item.id) as { user_id: number; paid: number }[];
+        const amount = Number(item.total_price || 0);
+
+        if (members.length > 0) {
+          const share = Math.round((amount / members.length) * 100) / 100;
+          for (const member of members) insertSplit.run(transactionId, member.user_id, share);
+          const paidMembers = members.filter(member => member.paid);
+          const payerRows = paidMembers.length > 0 ? paidMembers : [{ user_id: item.owner_user_id, paid: 1 }];
+          const paidShare = Math.round((amount / payerRows.length) * 100) / 100;
+          for (const payer of payerRows) insertPayer.run(transactionId, payer.user_id, paidShare);
+        } else {
+          insertPayer.run(transactionId, item.owner_user_id, amount);
+          insertSplit.run(transactionId, item.owner_user_id, amount);
+        }
+      }
     },
   ];
 

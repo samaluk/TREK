@@ -20,6 +20,14 @@ interface SettingsState {
 export const hasStoredLanguage = (): boolean =>
   typeof localStorage !== 'undefined' && !!localStorage.getItem('app_language')
 
+const getStoredLanguage = (): string => {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem('app_language') || 'en' : 'en'
+  } catch {
+    return 'en'
+  }
+}
+
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   settings: {
     map_tile_url: '',
@@ -28,7 +36,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     default_zoom: 10,
     dark_mode: false,
     default_currency: 'USD',
-    language: localStorage.getItem('app_language') || 'en',
+    language: getStoredLanguage(),
     temperature_unit: 'fahrenheit',
     time_format: '12h',
     show_place_description: false,

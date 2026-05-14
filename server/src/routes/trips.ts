@@ -34,6 +34,7 @@ import { listPlaces } from '../services/placeService';
 import { listItems as listPackingItems } from '../services/packingService';
 import { listItems as listTodoItems } from '../services/todoService';
 import { listBudgetItems } from '../services/budgetService';
+import { getCategoryBudgetProgress, listBudgetTransactions } from '../services/budgetLedgerService';
 import { listReservations } from '../services/reservationService';
 import { listFiles } from '../services/fileService';
 
@@ -316,6 +317,8 @@ router.get('/:id/bundle', authenticate, (req: Request, res: Response) => {
   const packingItems = listPackingItems(tripId);
   const todoItems = listTodoItems(tripId);
   const budgetItems = listBudgetItems(tripId);
+  const budgetTransactions = listBudgetTransactions(tripId);
+  const budgetCategoryBudgets = getCategoryBudgetProgress(tripId);
   const reservations = listReservations(tripId);
   const files = listFiles(tripId, false);
   const accommodations = listAccommodations(tripId);
@@ -329,6 +332,8 @@ router.get('/:id/bundle', authenticate, (req: Request, res: Response) => {
     packingItems,
     todoItems,
     budgetItems,
+    budgetTransactions,
+    budgetCategoryBudgets,
     reservations,
     files,
     accommodations,

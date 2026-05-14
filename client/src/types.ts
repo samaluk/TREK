@@ -17,9 +17,11 @@ export interface User {
 export interface Trip {
   id: number
   name: string
+  title?: string
   description: string | null
   start_date: string
   end_date: string
+  currency?: string
   cover_url: string | null
   is_archived: boolean
   reminder_days: number
@@ -125,10 +127,15 @@ export interface BudgetItem {
   trip_id: number
   name: string
   amount: number
+  total_price?: number
   currency: string
   category: string | null
   paid_by: number | null
   persons: number
+  days?: number | null
+  note?: string | null
+  sort_order?: number
+  reservation_id?: number | null
   members: BudgetMember[]
   expense_date: string | null
 }
@@ -136,6 +143,66 @@ export interface BudgetItem {
 export interface BudgetMember {
   user_id: number
   paid: boolean
+}
+
+export type BudgetTransactionType = 'expense' | 'settlement' | 'adjustment'
+
+export interface BudgetTransactionParty {
+  transaction_id?: number
+  user_id: number
+  amount: number
+  username?: string
+  avatar?: string | null
+  avatar_url?: string | null
+}
+
+export interface BudgetTransaction {
+  id: number
+  trip_id: number
+  type: BudgetTransactionType
+  title: string
+  category: string | null
+  transaction_date: string
+  note: string | null
+  currency: string
+  reservation_id?: number | null
+  legacy_budget_item_id?: number | null
+  created_at?: string
+  updated_at?: string
+  payers: BudgetTransactionParty[]
+  splits: BudgetTransactionParty[]
+}
+
+export interface BudgetCategoryBudget {
+  trip_id: number
+  category: string
+  currency: string
+  amount: number
+  spent: number
+  remaining: number
+}
+
+export interface BudgetLedgerBalance {
+  user_id: number
+  username: string
+  avatar_url: string | null
+  balance: number
+}
+
+export interface BudgetLedgerFlow {
+  from: { user_id: number; username: string; avatar_url: string | null }
+  to: { user_id: number; username: string; avatar_url: string | null }
+  amount: number
+}
+
+export interface BudgetLedgerSettlementCurrency {
+  currency: string
+  balances: BudgetLedgerBalance[]
+  flows: BudgetLedgerFlow[]
+}
+
+export interface BudgetLedgerSettlement {
+  currencies: BudgetLedgerSettlementCurrency[]
 }
 
 export interface ReservationEndpoint {

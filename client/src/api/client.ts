@@ -462,6 +462,12 @@ export const budgetApi = {
   settlement: (tripId: number | string) => apiClient.get(`/trips/${tripId}/budget/settlement`).then(r => r.data),
   reorderItems: (tripId: number | string, orderedIds: number[]) => apiClient.put(`/trips/${tripId}/budget/reorder/items`, { orderedIds }).then(r => r.data),
   reorderCategories: (tripId: number | string, orderedCategories: string[]) => apiClient.put(`/trips/${tripId}/budget/reorder/categories`, { orderedCategories }).then(r => r.data),
+  transactions: (tripId: number | string) => apiClient.get(`/trips/${tripId}/budget/transactions`).then(r => r.data),
+  createTransaction: (tripId: number | string, data: Record<string, unknown>) => apiClient.post(`/trips/${tripId}/budget/transactions`, data).then(r => r.data),
+  updateTransaction: (tripId: number | string, id: number, data: Record<string, unknown>) => apiClient.put(`/trips/${tripId}/budget/transactions/${id}`, data).then(r => r.data),
+  deleteTransaction: (tripId: number | string, id: number) => apiClient.delete(`/trips/${tripId}/budget/transactions/${id}`).then(r => r.data),
+  categoryBudgets: (tripId: number | string) => apiClient.get(`/trips/${tripId}/budget/category-budgets`).then(r => r.data),
+  replaceCategoryBudgets: (tripId: number | string, budgets: unknown[]) => apiClient.put(`/trips/${tripId}/budget/category-budgets`, { budgets }).then(r => r.data),
 }
 
 export const filesApi = {

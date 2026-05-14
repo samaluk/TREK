@@ -241,6 +241,7 @@ function createTables(db: Database.Database): void {
       note TEXT,
       currency TEXT NOT NULL,
       reservation_id INTEGER REFERENCES reservations(id) ON DELETE SET NULL DEFAULT NULL,
+      legacy_budget_item_id INTEGER UNIQUE REFERENCES budget_items(id) ON DELETE SET NULL DEFAULT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );

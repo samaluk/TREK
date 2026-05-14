@@ -13,12 +13,28 @@ import {
   updateMembers,
   toggleMemberPaid,
   getPerPersonSummary,
-  calculateSettlement,
   reorderBudgetItems,
   reorderBudgetCategories,
 } from '../services/budgetService';
+import {
+  calculateLedgerSettlement,
+  createBudgetTransaction,
+  deleteBudgetTransaction,
+  getCategoryBudgetProgress,
+  listBudgetTransactions,
+  replaceCategoryBudgets,
+  updateBudgetTransaction,
+} from '../services/budgetLedgerService';
 
 const router = express.Router({ mergeParams: true });
+
+function canEditBudget(_req: Request, trip: { user_id: number }, user: AuthRequest['user']) {
+  return checkPermission('budget_edit', user.role, trip.user_id, user.id, trip.user_id !== user.id);
+}
+
+function isServiceError(result: unknown): result is { error: string; status: number } {
+  return typeof result === 'object' && result !== null && 'error' in result && 'status' in result;
+}
 
 router.get('/', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
@@ -28,6 +44,76 @@ router.get('/', authenticate, (req: Request, res: Response) => {
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
   res.json({ items: listBudgetItems(tripId) });
+});
+
+router.get('/transactions', authenticate, (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const { tripId } = req.params;
+
+  if (!verifyTripAccess(tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
+  res.json({ transactions: listBudgetTransactions(tripId) });
+});
+
+router.post('/transactions', authenticate, (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const { tripId } = req.params;
+  const trip = verifyTripAccess(tripId, authReq.user.id);
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
+  if (!canEditBudget(req, trip, authReq.user)) return res.status(403).json({ error: 'No permission' });
+
+  const transaction = createBudgetTransaction(tripId, req.body);
+  if (isServiceError(transaction)) return res.status(transaction.status).json({ error: transaction.error });
+
+  res.status(201).json({ transaction });
+  broadcast(tripId, 'budget:transaction-created', { transaction }, req.headers['x-socket-id'] as string);
+});
+
+router.put('/transactions/:transactionId', authenticate, (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const { tripId, transactionId } = req.params;
+  const trip = verifyTripAccess(tripId, authReq.user.id);
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
+  if (!canEditBudget(req, trip, authReq.user)) return res.status(403).json({ error: 'No permission' });
+
+  const transaction = updateBudgetTransaction(tripId, transactionId, req.body);
+  if (isServiceError(transaction)) return res.status(transaction.status).json({ error: transaction.error });
+  if (!transaction) return res.status(404).json({ error: 'Budget transaction not found' });
+
+  res.json({ transaction });
+  broadcast(tripId, 'budget:transaction-updated', { transaction }, req.headers['x-socket-id'] as string);
+});
+
+router.delete('/transactions/:transactionId', authenticate, (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const { tripId, transactionId } = req.params;
+  const trip = verifyTripAccess(tripId, authReq.user.id);
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
+  if (!canEditBudget(req, trip, authReq.user)) return res.status(403).json({ error: 'No permission' });
+
+  if (!deleteBudgetTransaction(tripId, transactionId)) return res.status(404).json({ error: 'Budget transaction not found' });
+
+  res.json({ success: true });
+  broadcast(tripId, 'budget:transaction-deleted', { transactionId: Number(transactionId) }, req.headers['x-socket-id'] as string);
+});
+
+router.get('/category-budgets', authenticate, (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const { tripId } = req.params;
+
+  if (!verifyTripAccess(tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
+  res.json({ budgets: getCategoryBudgetProgress(tripId) });
+});
+
+router.put('/category-budgets', authenticate, (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const { tripId } = req.params;
+  const trip = verifyTripAccess(tripId, authReq.user.id);
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
+  if (!canEditBudget(req, trip, authReq.user)) return res.status(403).json({ error: 'No permission' });
+
+  const budgets = replaceCategoryBudgets(tripId, Array.isArray(req.body.budgets) ? req.body.budgets : []);
+  res.json({ budgets });
+  broadcast(tripId, 'budget:category-budgets-updated', { budgets }, req.headers['x-socket-id'] as string);
 });
 
 router.get('/summary/per-person', authenticate, (req: Request, res: Response) => {
@@ -166,7 +252,7 @@ router.get('/settlement', authenticate, (req: Request, res: Response) => {
   if (!verifyTripAccess(Number(tripId), authReq.user.id))
     return res.status(404).json({ error: 'Trip not found' });
 
-  res.json(calculateSettlement(tripId));
+  res.json(calculateLedgerSettlement(tripId));
 });
 
 router.delete('/:id', authenticate, (req: Request, res: Response) => {

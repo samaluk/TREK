@@ -331,51 +331,162 @@ describe('Budget summary and settlement', () => {
     expect(entry.total_paid).toBeGreaterThan(0);
   });
 
-  it('BUDGET-008 — GET /settlement returns settlement transactions', async () => {
+  it('BUDGET-008 — GET /settlement returns ledger settlement grouped by currency', async () => {
     const { user } = createUser(testDb);
     const { user: user2 } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
     addTripMember(testDb, trip.id, user2.id);
-    const item = createBudgetItem(testDb, trip.id, { name: 'Dinner', total_price: 60 });
-
     await request(app)
-      .put(`/api/trips/${trip.id}/budget/${item.id}/members`)
+      .post(`/api/trips/${trip.id}/budget/transactions`)
       .set('Cookie', authCookie(user.id))
-      .send({ user_ids: [user.id, user2.id] });
-    await request(app)
-      .put(`/api/trips/${trip.id}/budget/${item.id}/members/${user.id}/paid`)
-      .set('Cookie', authCookie(user.id))
-      .send({ paid: true });
+      .send({
+        type: 'expense',
+        title: 'Dinner',
+        category: 'Food',
+        transaction_date: '2026-05-10',
+        currency: 'EUR',
+        payers: [{ user_id: user.id, amount: 60 }],
+        splits: [{ user_id: user.id, amount: 30 }, { user_id: user2.id, amount: 30 }],
+      });
 
     const res = await request(app)
       .get(`/api/trips/${trip.id}/budget/settlement`)
       .set('Cookie', authCookie(user.id));
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body.balances)).toBe(true);
-    expect(Array.isArray(res.body.flows)).toBe(true);
+    expect(res.body.currencies).toHaveLength(1);
+    expect(res.body.currencies[0].currency).toBe('EUR');
+    expect(Array.isArray(res.body.currencies[0].balances)).toBe(true);
+    expect(Array.isArray(res.body.currencies[0].flows)).toBe(true);
 
-    const payerBalance = res.body.balances.find((b: any) => b.user_id === user.id);
-    const nonPayerBalance = res.body.balances.find((b: any) => b.user_id === user2.id);
+    const payerBalance = res.body.currencies[0].balances.find((b: any) => b.user_id === user.id);
+    const nonPayerBalance = res.body.currencies[0].balances.find((b: any) => b.user_id === user2.id);
     expect(payerBalance.balance).toBeCloseTo(30);
     expect(nonPayerBalance.balance).toBeCloseTo(-30);
 
-    expect(res.body.flows).toHaveLength(1);
-    expect(res.body.flows[0].from.user_id).toBe(user2.id);
-    expect(res.body.flows[0].to.user_id).toBe(user.id);
-    expect(res.body.flows[0].amount).toBeCloseTo(30);
+    expect(res.body.currencies[0].flows).toHaveLength(1);
+    expect(res.body.currencies[0].flows[0].from.user_id).toBe(user2.id);
+    expect(res.body.currencies[0].flows[0].to.user_id).toBe(user.id);
+    expect(res.body.currencies[0].flows[0].amount).toBeCloseTo(30);
   });
 
-  it('BUDGET-009 — settlement with no payers returns empty transactions', async () => {
+  it('BUDGET-009 — settlement with no ledger transactions returns empty currencies', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
-    createBudgetItem(testDb, trip.id, { name: 'Train', total_price: 40 });
 
     const res = await request(app)
       .get(`/api/trips/${trip.id}/budget/settlement`)
       .set('Cookie', authCookie(user.id));
     expect(res.status).toBe(200);
-    expect(res.body.balances).toEqual([]);
-    expect(res.body.flows).toEqual([]);
+    expect(res.body.currencies).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ledger transactions and category budgets
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Budget ledger API', () => {
+  it('BUDGET-019 — transaction CRUD keeps payer and split rows atomic', async () => {
+    const { user } = createUser(testDb);
+    const { user: member } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    addTripMember(testDb, trip.id, member.id);
+
+    const createRes = await request(app)
+      .post(`/api/trips/${trip.id}/budget/transactions`)
+      .set('Cookie', authCookie(user.id))
+      .send({
+        type: 'expense',
+        title: 'Museum',
+        category: 'Activities',
+        transaction_date: '2026-05-11',
+        currency: 'USD',
+        payers: [{ user_id: user.id, amount: 120 }],
+        splits: [{ user_id: member.id, amount: 120 }],
+      });
+    expect(createRes.status).toBe(201);
+    expect(createRes.body.transaction.payers).toHaveLength(1);
+    expect(createRes.body.transaction.splits[0].user_id).toBe(member.id);
+    const transactionId = createRes.body.transaction.id;
+
+    const updateRes = await request(app)
+      .put(`/api/trips/${trip.id}/budget/transactions/${transactionId}`)
+      .set('Cookie', authCookie(user.id))
+      .send({
+        title: 'Museum and taxi',
+        payers: [{ user_id: user.id, amount: 80 }, { user_id: member.id, amount: 40 }],
+        splits: [{ user_id: user.id, amount: 60 }, { user_id: member.id, amount: 60 }],
+      });
+    expect(updateRes.status).toBe(200);
+    expect(updateRes.body.transaction.title).toBe('Museum and taxi');
+    expect(updateRes.body.transaction.payers).toHaveLength(2);
+    expect(updateRes.body.transaction.splits).toHaveLength(2);
+
+    const listRes = await request(app)
+      .get(`/api/trips/${trip.id}/budget/transactions`)
+      .set('Cookie', authCookie(user.id));
+    expect(listRes.status).toBe(200);
+    expect(listRes.body.transactions).toHaveLength(1);
+
+    const deleteRes = await request(app)
+      .delete(`/api/trips/${trip.id}/budget/transactions/${transactionId}`)
+      .set('Cookie', authCookie(user.id));
+    expect(deleteRes.status).toBe(200);
+    expect(testDb.prepare('SELECT COUNT(*) as count FROM budget_transaction_payers WHERE transaction_id = ?').get(transactionId).count).toBe(0);
+    expect(testDb.prepare('SELECT COUNT(*) as count FROM budget_transaction_splits WHERE transaction_id = ?').get(transactionId).count).toBe(0);
+  });
+
+  it('BUDGET-020 — category budget progress is derived from categorized ledger transactions', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    await request(app)
+      .post(`/api/trips/${trip.id}/budget/transactions`)
+      .set('Cookie', authCookie(user.id))
+      .send({
+        type: 'expense',
+        title: 'Dinner',
+        category: 'Food',
+        transaction_date: '2026-05-12',
+        currency: 'EUR',
+        payers: [{ user_id: user.id, amount: 75 }],
+        splits: [{ user_id: user.id, amount: 75 }],
+      });
+
+    const putRes = await request(app)
+      .put(`/api/trips/${trip.id}/budget/category-budgets`)
+      .set('Cookie', authCookie(user.id))
+      .send({ budgets: [{ category: 'Food', currency: 'EUR', amount: 200 }] });
+    expect(putRes.status).toBe(200);
+    expect(putRes.body.budgets[0].spent).toBe(75);
+    expect(putRes.body.budgets[0].remaining).toBe(125);
+  });
+
+  it('BUDGET-021 — member cannot edit ledger when budget_edit is restricted to trip_owner', async () => {
+    const { user: owner } = createUser(testDb);
+    const { user: member } = createUser(testDb);
+    const trip = createTrip(testDb, owner.id);
+    addTripMember(testDb, trip.id, member.id);
+
+    const { invalidatePermissionsCache } = await import('../../src/services/permissions');
+    testDb.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('perm_budget_edit', 'trip_owner')").run();
+    invalidatePermissionsCache();
+
+    const res = await request(app)
+      .post(`/api/trips/${trip.id}/budget/transactions`)
+      .set('Cookie', authCookie(member.id))
+      .send({
+        type: 'expense',
+        title: 'Denied',
+        transaction_date: '2026-05-12',
+        currency: 'EUR',
+        payers: [{ user_id: member.id, amount: 10 }],
+        splits: [{ user_id: member.id, amount: 10 }],
+      });
+    expect(res.status).toBe(403);
+
+    testDb.prepare("DELETE FROM app_settings WHERE key = 'perm_budget_edit'").run();
+    invalidatePermissionsCache();
   });
 });
 

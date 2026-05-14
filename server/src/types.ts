@@ -151,6 +151,7 @@ export interface BudgetTransaction {
   note?: string | null;
   currency: string;
   reservation_id?: number | null;
+  legacy_budget_item_id?: number | null;
   created_at?: string;
   updated_at?: string;
   payers?: BudgetTransactionPayer[];

@@ -65,6 +65,14 @@ interface AuthState {
 // Sequence counter to prevent stale loadUser responses from overwriting fresh auth state
 let authSequence = 0
 
+const getStoredDemoMode = (): boolean => {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem('demo_mode') === 'true'
+  } catch {
+    return false
+  }
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
   (set, get) => ({
@@ -72,7 +80,7 @@ export const useAuthStore = create<AuthState>()(
   isAuthenticated: false,
   isLoading: true,
   error: null,
-  demoMode: localStorage.getItem('demo_mode') === 'true',
+  demoMode: getStoredDemoMode(),
   devMode: false,
   isPrerelease: false,
   appVersion: '',
